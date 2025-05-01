@@ -358,6 +358,18 @@ fitOutcomeModel <- function(population,
             includePenalty = TRUE
           )
         }
+        if(fit$return_flag == "POOR_BLR_STEP"){
+          message(paste("Model returned POOR_BLR_STEP, starting coefficients at non-zero instead."))
+          fit <- tryCatch(
+            {
+              Cyclops::fitCyclopsModel(cyclopsData, prior = prior, control = control,
+                                       startingCoefficients = rep(1, length(getCovariateIds(cyclopsData))))
+            },
+            error = function(e) {
+              e$message
+            }
+          )
+        }
         if (fit$return_flag != "SUCCESS") {
           status <- fit$return_flag
         } else {
