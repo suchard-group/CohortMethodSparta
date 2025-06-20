@@ -1,3 +1,32 @@
+CohortMethod 5.5.0
+==================
+
+Changes:
+
+1. Added `threshold` and `alpha` arguments to `computeCovariateBalance()`, implementing George's new balance metric (ony mark covariates as unbalanced when absolute SDM is **significantly** greater than the threshold). Default values maintain old behaviour.
+
+2. Added `showUnbalanced` argument to `plotCovariateBalanceScatterPlot()`. Default value maintains old behavior.
+
+
+CohortMethod 5.4.1
+==================
+
+Changes:
+
+1. `createPs()` now checks if filtering of the covariate data is necessary (either because subject have been removed from the study population or because `excludeCovariateIds` or `includeCovariateIds` was specified). If no filtering is required, no extra copy of the covariate data data is created, saving IO time.
+
+2. Added `minimumCaseCount` argument to `createCohortMethodDataSimulationProfile ()`.
+
+3. Preparing for `Andromeda 1.0.0`: no longer assuming Andromeda tables are sorted.
+
+4. Changing dependency from `ShinyAppBuilder` to `OhdsiShinyAppBuilder`.
+
+
+Bugfixes:
+
+1. Fixed NA covariate prevalences when calling `createCohortMethodDataSimulationProfile()`.
+
+
 CohortMethod 5.4.0
 ==================
 

@@ -1,6 +1,6 @@
 # @file HelperFunctions.R
 #
-# Copyright 2024 Observational Health Data Sciences and Informatics
+# Copyright 2025 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortMethod
 #
@@ -76,7 +76,7 @@ checkCmInstallation <- function(connectionDetails) {
 
 nrow_temp <- function(x) {
   if (inherits(x, "tbl_dbi")) {
-    return(x %>% count() %>% pull())
+    return(x |> count() |> pull())
   } else {
     return(nrow(x))
   }
@@ -92,12 +92,6 @@ ensureInstalled <- function(pkgs) {
     }
   }
   for (package in notInstalled) {
-    if (package %in% c("ShinyAppBuilder", "ResultModelManager")) {
-      ensureInstalled("remotes")
-      message("\nInstalling from Github using remotes")
-      remotes::install_github(sprintf("OHDSI/%s", package))
-    } else {
-      install.packages(package)
-    }
+    install.packages(package)
   }
 }

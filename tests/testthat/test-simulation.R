@@ -51,6 +51,21 @@ test_that("createCohortMethodDataSimulationProfile", {
   expect_true(cohortDataSimulationProfile$cohortEndRate > 0)
   expect_true(cohortDataSimulationProfile$obsStartRate > 0)
   expect_true(cohortDataSimulationProfile$obsEndRate > 0)
+
+  truncatedProfile <- .truncateSimulationProfile(cohortDataSimulationProfile, 100)
+
+  minPrevalenceAfterTruncation <- truncatedProfile$covariatePrevalence |>
+    filter(prevalence > 0) |>
+    summarize(min(prevalence)) |>
+    pull()
+
+  minPrevalenceBeforeTruncation <- cohortDataSimulationProfile$covariatePrevalence |>
+    filter(prevalence > 0) |>
+    summarize(min(prevalence)) |>
+    pull()
+
+  # test truncation of covariate prevalence
+  expect_true(minPrevalenceAfterTruncation > minPrevalenceBeforeTruncation)
 })
 
 test_that("Test bad covariate data", {

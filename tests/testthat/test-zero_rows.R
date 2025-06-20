@@ -1,4 +1,4 @@
-# Copyright 2024 Observational Health Data Sciences and Informatics
+# Copyright 2025 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortMethod
 #
@@ -20,7 +20,7 @@ set.seed(1234)
 data(cohortMethodDataSimulationProfile)
 sampleSize <- 1
 cohortMethodData <- simulateCohortMethodData(cohortMethodDataSimulationProfile, n = sampleSize)
-cohorts <- cohortMethodData$cohorts %>% collect()
+cohorts <- cohortMethodData$cohorts |> collect()
 cohortMethodData$cohorts <- cohorts[-1, ]
 
 test_that("Create study population functions with zero rows", {

@@ -1,4 +1,4 @@
-# Copyright 2024 Observational Health Data Sciences and Informatics
+# Copyright 2025 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortMethod
 #
@@ -14,6 +14,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+
+##' Truncate low-prevalence covariates in a simulation profile
+##'
+##' @description
+##' Set to zero all low-prevalence covariates in the supplied simulation table
+##' in order to prevent identification of persons
+##' @title truncateSimulationProfile
+##' @param profile Object of class `CohortDataSimulationProfile`
+##' @param minCellCount Number of cases below which prevalence will be set to zero
+##' @return Modified copy of supplied simulation profile
+.truncateSimulationProfile <- function(profile, minCellCount = 5) {
+    checkmate::assertClass(profile, "CohortDataSimulationProfile")
+    checkmate::assertIntegerish(minCellCount, lower = 0L, upper = profile$metaData$populationSize)
+
+    if (minCellCount == 0) {
+        warning("No truncation was done on low-prevalence covariates. Object may include low cell counts that enable identification of persons.")
+        return(profile)
+    }
+
+    minObservedNonzeroPrevalence <- profile$covariatePrevalence |>
+        filter(.data$prevalence > 0) |>
+        summarize(min(.data$prevalence)) |>
+        pull()
+
+    message(sprintf("Before truncating simulation profile, lowest non-zero covariate prevalence is %.08f (%.0f / %.0f)",
+            minObservedNonzeroPrevalence,
+            round(minObservedNonzeroPrevalence * profile$metaData$populationSize),
+            profile$metaData$populationSize))
+
+    minimumAllowedPrevalence <- minCellCount / profile$metaData$populationSize
+
+    profile$covariatePrevalence <- profile$covariatePrevalence |>
+        mutate(prevalence = ifelse(.data$prevalence < minimumAllowedPrevalence,
+                                   0, .data$prevalence))
+
+    truncatedMinObservedNonzeroPrevalence <- profile$covariatePrevalence |>
+        filter(.data$prevalence > 0) |>
+        summarize(min(.data$prevalence)) |>
+        pull()
+
+    message(sprintf("After truncating simulation profile, lowest non-zero covariate prevalence is %.08f (%.0f / %.0f)",
+            truncatedMinObservedNonzeroPrevalence,
+            round(truncatedMinObservedNonzeroPrevalence * profile$metaData$populationSize),
+            profile$metaData$populationSize))
+
+    return(profile)
+}
+
+
 #' Create simulation profile
 #'
 #' @description
@@ -22,6 +72,7 @@
 #' characteristics.
 #'
 #' @template CohortMethodData
+#' @param minCellCount If > 0, will apply `.truncateSimulationProfile()`
 #'
 #' @details
 #' The output of this function is an object that can be used by the [simulateCohortMethodData()]
@@ -31,7 +82,8 @@
 #' An object of type `CohortDataSimulationProfile`.
 #'
 #' @export
-createCohortMethodDataSimulationProfile <- function(cohortMethodData) {
+createCohortMethodDataSimulationProfile <- function(cohortMethodData,
+                                                    minCellCount = 5) {
   errorMessages <- checkmate::makeAssertCollection()
   checkmate::assertClass(cohortMethodData, "CohortMethodData", add = errorMessages)
   checkmate::reportAssertions(collection = errorMessages)
@@ -44,22 +96,24 @@ createCohortMethodDataSimulationProfile <- function(cohortMethodData) {
     stop("Covariates are empty")
   }
 
-  if (sum(cohortMethodData$cohorts %>% select("daysToCohortEnd") %>% pull()) == 0) {
+  if (sum(cohortMethodData$cohorts |> select("daysToCohortEnd") |> pull()) == 0) {
     warning("Cohort data appears to be limited, check daysToCohortEnd which appears to be all zeros")
   }
 
   message("Computing covariate prevalence")
   # (Note: currently limiting to binary covariates)
-  populationSize <- nrow(cohortMethodData$cohorts)
-  covariatePrevalence <- cohortMethodData$covariates %>%
-    group_by(.data$covariateId) %>%
-    summarise(sum = sum(.data$covariateValue, na.rm = TRUE)) %>%
-    mutate(prevalence = .data$sum / populationSize) %>%
-    ungroup() %>%
-    inner_join(cohortMethodData$covariateRef, by = "covariateId") %>%
-    inner_join(cohortMethodData$analysisRef, by = "analysisId") %>%
-    filter(.data$isBinary == "Y") %>%
-    select("covariateId", "prevalence") %>%
+  populationSize <- cohortMethodData$cohorts |>
+    count() |>
+    pull()
+  covariatePrevalence <- cohortMethodData$covariates |>
+    group_by(.data$covariateId) |>
+    summarise(sum = sum(.data$covariateValue, na.rm = TRUE)) |>
+    mutate(prevalence = .data$sum / populationSize) |>
+    ungroup() |>
+    inner_join(cohortMethodData$covariateRef, by = "covariateId") |>
+    inner_join(cohortMethodData$analysisRef, by = "analysisId") |>
+    filter(.data$isBinary == "Y") |>
+    select("covariateId", "prevalence") |>
     collect()
 
   message("Computing propensity model")
@@ -88,26 +142,28 @@ createCohortMethodDataSimulationProfile <- function(cohortMethodData) {
       modelType = "poisson",
       stratified = FALSE,
       useCovariates = TRUE,
-      prior = Cyclops::createPrior("laplace", 0.1, exclude = 0)
+      prior = Cyclops::createPrior("laplace", 0.1, exclude = 0),
+      control = Cyclops::createControl(threads = 2),
+      profileBounds = NULL
     )
     outcomeModels[[i]] <- outcomeModel$outcomeModelCoefficients[outcomeModel$outcomeModelCoefficients != 0]
   }
 
   message("Computing rates of prior outcomes")
-  totalTime <- cohortMethodData$cohorts %>%
-    summarise(time = sum(.data$daysFromObsStart, na.rm = TRUE)) %>%
+  totalTime <- cohortMethodData$cohorts |>
+    summarise(time = sum(.data$daysFromObsStart, na.rm = TRUE)) |>
     pull()
 
-  preIndexOutcomeRates <- cohortMethodData$outcomes %>%
-    filter(.data$daysToEvent < 0) %>%
-    group_by(.data$outcomeId) %>%
-    summarise(n = n_distinct(.data$rowId)) %>%
-    mutate(rate = .data$n / totalTime) %>%
-    select("outcomeId", "rate") %>%
+  preIndexOutcomeRates <- cohortMethodData$outcomes |>
+    filter(.data$daysToEvent < 0) |>
+    group_by(.data$outcomeId) |>
+    summarise(n = n_distinct(.data$rowId)) |>
+    mutate(rate = .data$n / totalTime) |>
+    select("outcomeId", "rate") |>
     collect()
 
   message("Fitting models for time to observation period start, end and time to cohort end")
-  cohorts <- cohortMethodData$cohorts %>%
+  cohorts <- cohortMethodData$cohorts |>
     collect()
 
   obsEnd <- cohorts$daysToObsEnd
@@ -140,7 +196,9 @@ createCohortMethodDataSimulationProfile <- function(cohortMethodData) {
     minObsTime = minObsTime,
     obsEndRate = 1 / exp(coef(fitObsEnd))
   )
+
   class(result) <- "CohortDataSimulationProfile"
+  result <- .truncateSimulationProfile(result, minCellCount)
   return(result)
 }
 
@@ -203,10 +261,10 @@ simulateCohortMethodData <- function(profile, n = 10000) {
     beta = as.numeric(betas),
     covariateId = as.numeric(names(betas))
   )
-  treatmentVar <- covariates %>%
-    inner_join(betas, by = "covariateId") %>%
-    mutate(value = .data$covariateValue * .data$beta) %>%
-    group_by(.data$rowId) %>%
+  treatmentVar <- covariates |>
+    inner_join(betas, by = "covariateId") |>
+    mutate(value = .data$covariateValue * .data$beta) |>
+    group_by(.data$rowId) |>
     summarise(value = sum(.data$value) + intercept)
   link <- function(x) {
     return(1 / (1 + exp(-x)))

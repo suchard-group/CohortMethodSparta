@@ -1,8 +1,8 @@
 Package: CohortMethod
 Type: Package
 Title: New-User Cohort Method with Large Scale Propensity and Outcome Models
-Version: 5.4.0
-Date: 2024-09-27
+Version: 5.5.0
+Date: 2025-05-26
 Authors@R: c(
 	person("Martijn", "Schuemie", , "schuemie@ohdsi.org", role = c("aut", "cre")),
 	person("Marc", "Suchard", role = c("aut")),
@@ -45,7 +45,7 @@ Imports:
 	Rcpp (>= 0.11.2),
 	SqlRender (>= 1.18.0),
 	survival,
-	ParallelLogger (>= 3.0.1),
+	ParallelLogger (>= 3.4.2),
 	bit64,
 	checkmate,
 	EmpiricalCalibration,
@@ -60,12 +60,10 @@ Suggests:
 	R.utils,
 	RSQLite,
 	ResultModelManager,
-	ShinyAppBuilder (>= 1.2.0),
-	markdown,
-	remotes
+	OhdsiShinyAppBuilder,
+	markdown
 Remotes:
-	ohdsi/ResultModelManager,
-	ohdsi/ShinyAppBuilder
+  ohdsi/ParallelLogger@develop
 LinkingTo: Rcpp
 NeedsCompilation: yes
 RoxygenNote: 7.3.2

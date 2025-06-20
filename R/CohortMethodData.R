@@ -1,4 +1,4 @@
-# Copyright 2024 Observational Health Data Sciences and Informatics
+# Copyright 2025 Observational Health Data Sciences and Informatics
 #
 # This file is part of CohortMethod
 #
@@ -118,7 +118,7 @@ setMethod("summary", "CohortMethodData", function(object) {
   if (!Andromeda::isValidAndromeda(object)) {
     stop("Object is not valid. Probably the Andromeda object was closed.")
   }
-  cohorts <- object$cohorts %>%
+  cohorts <- object$cohorts |>
     collect()
   metaData <- attr(object, "metaData")
   targetPersons <- length(unique(cohorts$personSeqId[cohorts$treatment == 1]))
@@ -128,7 +128,7 @@ setMethod("summary", "CohortMethodData", function(object) {
     eventCount = 0,
     personCount = 0
   )
-  outcomes <- object$outcomes %>%
+  outcomes <- object$outcomes |>
     collect()
   for (i in 1:nrow(outcomeCounts)) {
     outcomeCounts$eventCount[i] <- sum(outcomes$outcomeId == metaData$outcomeIds[i])
