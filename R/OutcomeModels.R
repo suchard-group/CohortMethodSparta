@@ -282,6 +282,12 @@ fitOutcomeModel <- function(population,
         }
       }
 
+      # If bootstrap, normal prior -------------------------------------------------------------------------
+      if(bootstrapCi){
+        prior <- Cyclops::createPrior("normal",
+                                      variance = 10)
+      }
+
       # Fit model -------------------------------------------------------------------------------------------
       covariateData$outcomes <- informativePopulation
       outcomes <- covariateData$outcomes
