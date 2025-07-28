@@ -1246,6 +1246,11 @@ createReferenceTable <- function(cmAnalysisList,
         targetId = referenceTable$targetId[idx],
         comparatorId = referenceTable$comparatorId[idx]
       )
+
+      #Stupid fix: If load ID = 2 (SSPS), make sharedPsFile = psFile so doFitOutcomeModelPlus uses correct intermediate PS file
+      idx <- referenceTable$loadArgsId == 2
+      referenceTable$sharedPsFile[idx] <- referenceTable$psFile[idx]
+
     } else {
       # One propensity model across all study population settings:
       referenceTable$sharedPsFile[idx] <- .createPsFileName(

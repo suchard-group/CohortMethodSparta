@@ -67,6 +67,7 @@ fitOutcomeModel <- function(population,
                             useCovariates = FALSE,
                             inversePtWeighting = FALSE,
                             bootstrapCi = FALSE,
+                            bootstrapRegularization = FALSE,
                             bootstrapReplicates = 1000,
                             interactionCovariateIds = c(),
                             excludeCovariateIds = c(),
@@ -283,9 +284,9 @@ fitOutcomeModel <- function(population,
       }
 
       # If bootstrap, normal prior -------------------------------------------------------------------------
-      if(bootstrapCi){
+      if(bootstrapCi & bootstrapRegularization){
         prior <- Cyclops::createPrior("normal",
-                                      variance = 10)
+                                      variance = 100)
       }
 
       # Fit model -------------------------------------------------------------------------------------------
@@ -402,10 +403,19 @@ fitOutcomeModel <- function(population,
           coefficients <- coef(fit)
           logRr <- coef(fit)[names(coef(fit)) == as.character(treatmentVarId)]
           if (bootstrapCi) {
-            bootstrap <- Cyclops::runBootstrap(fit, bootstrapReplicates)
-            bootstrapSummary <- bootstrap$summary[as.character(treatmentVarId),]
-            ci <- c(0, bootstrapSummary$bpi_lower, bootstrapSummary$bpi_upper)
-            seLogRr <- bootstrapSummary$std_err
+            bootstrap <- tryCatch(
+              Cyclops::runBootstrap(fit, bootstrapReplicates),
+              error = function(e){
+                if(!bootstrapRegularization){
+                  status <<- "Bootstrap NA"
+                }
+              }
+            )
+            if(status != "Bootstrap NA"){
+              bootstrapSummary <- bootstrap$summary[as.character(treatmentVarId),]
+              ci <- c(0, bootstrapSummary$bpi_lower, bootstrapSummary$bpi_upper)
+              seLogRr <- bootstrapSummary$std_err
+            }
           } else {
             ci <- tryCatch(
               {
@@ -421,71 +431,73 @@ fitOutcomeModel <- function(population,
             }
             seLogRr <- (ci[3] - ci[2]) / (2 * qnorm(0.975))
           }
-          llNull <- Cyclops::getCyclopsProfileLogLikelihood(
-            object = fit,
-            parm = treatmentVarId,
-            x = 0,
-            includePenalty = FALSE
-          )$value
-          llr <- fit$log_likelihood - llNull
-          treatmentEstimate <- tibble(
-            logRr = logRr,
-            logLb95 = ci[2],
-            logUb95 = ci[3],
-            seLogRr = seLogRr,
-            llr = llr
-          )
-          priorVariance <- fit$variance[1]
-          logLikelihood <- fit$log_likelihood
-          if (!is.null(mainEffectTerms)) {
-            logRr <- coef(fit)[match(as.character(mainEffectTerms$id), names(coef(fit)))]
-            if (prior$priorType == "none") {
+          if (status == "OK"){
+            llNull <- Cyclops::getCyclopsProfileLogLikelihood(
+              object = fit,
+              parm = treatmentVarId,
+              x = 0,
+              includePenalty = FALSE
+            )$value
+            llr <- fit$log_likelihood - llNull
+            treatmentEstimate <- tibble(
+              logRr = logRr,
+              logLb95 = ci[2],
+              logUb95 = ci[3],
+              seLogRr = seLogRr,
+              llr = llr
+            )
+            priorVariance <- fit$variance[1]
+            logLikelihood <- fit$log_likelihood
+            if (!is.null(mainEffectTerms)) {
+              logRr <- coef(fit)[match(as.character(mainEffectTerms$id), names(coef(fit)))]
+              if (prior$priorType == "none") {
+                ci <- tryCatch(
+                  {
+                    confint(fit,
+                            parm = mainEffectTerms$id, includePenalty = TRUE,
+                            overrideNoRegularization = TRUE
+                    )
+                  },
+                  error = function(e) {
+                    missing(e) # suppresses R CMD check note
+                    t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
+                  }
+                )
+              } else {
+                ci <- t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
+              }
+              seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
+              mainEffectEstimates <- tibble(
+                covariateId = mainEffectTerms$id,
+                coariateName = mainEffectTerms$name,
+                logRr = logRr,
+                logLb95 = ci[, 2],
+                logUb95 = ci[, 3],
+                seLogRr = seLogRr
+              )
+            }
+
+            if (!is.null(interactionTerms)) {
+              logRr <- coef(fit)[match(as.character(interactionTerms$interactionId), names(coef(fit)))]
               ci <- tryCatch(
                 {
-                  confint(fit,
-                          parm = mainEffectTerms$id, includePenalty = TRUE,
-                          overrideNoRegularization = TRUE
-                  )
+                  confint(fit, parm = interactionTerms$interactionId, includePenalty = TRUE)
                 },
                 error = function(e) {
                   missing(e) # suppresses R CMD check note
-                  t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
+                  t(array(c(0, -Inf, Inf), dim = c(3, nrow(interactionTerms))))
                 }
               )
-            } else {
-              ci <- t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
+              seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
+              interactionEstimates <- data.frame(
+                covariateId = interactionTerms$covariateId,
+                interactionName = interactionTerms$interactionName,
+                logRr = logRr,
+                logLb95 = ci[, 2],
+                logUb95 = ci[, 3],
+                seLogRr = seLogRr
+              )
             }
-            seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
-            mainEffectEstimates <- tibble(
-              covariateId = mainEffectTerms$id,
-              coariateName = mainEffectTerms$name,
-              logRr = logRr,
-              logLb95 = ci[, 2],
-              logUb95 = ci[, 3],
-              seLogRr = seLogRr
-            )
-          }
-
-          if (!is.null(interactionTerms)) {
-            logRr <- coef(fit)[match(as.character(interactionTerms$interactionId), names(coef(fit)))]
-            ci <- tryCatch(
-              {
-                confint(fit, parm = interactionTerms$interactionId, includePenalty = TRUE)
-              },
-              error = function(e) {
-                missing(e) # suppresses R CMD check note
-                t(array(c(0, -Inf, Inf), dim = c(3, nrow(interactionTerms))))
-              }
-            )
-            seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
-            interactionEstimates <- data.frame(
-              covariateId = interactionTerms$covariateId,
-              interactionName = interactionTerms$interactionName,
-              logRr = logRr,
-              logLb95 = ci[, 2],
-              logUb95 = ci[, 3],
-              seLogRr = seLogRr
-            )
           }
         }
       }
