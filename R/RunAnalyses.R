@@ -1248,7 +1248,7 @@ createReferenceTable <- function(cmAnalysisList,
       )
 
       #Stupid fix: If load ID = 2 (SSPS), make sharedPsFile = psFile so doFitOutcomeModelPlus uses correct intermediate PS file
-      idx <- referenceTable$loadArgsId == 2
+      idx <- referenceTable$loadArgsId == 2 & referenceTable$outcomeOfInterest == FALSE
       referenceTable$sharedPsFile[idx] <- referenceTable$psFile[idx]
 
     } else {
