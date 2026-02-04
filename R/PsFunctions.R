@@ -734,9 +734,20 @@ computePsAuc <- function(data, confidenceIntervals = FALSE, maxRows = 100000) {
 #' Use the provided propensity scores to trim subjects with extreme scores.
 #'
 #' @param population     A data frame with the three columns described below
-#' @param trimFraction   This fraction will be removed from each treatment group. In the target
-#'                       group, persons with the highest propensity scores will be removed, in the
-#'                       comparator group person with the lowest scores will be removed.
+#' @param trimFraction   For `trimFraction = symmetric`: the PS cut-off value.
+#'                       For `trimFraction = asymmetric` or `reverse asymmetric`: the
+#'                       fraction that will be removed from each treatment group.
+#'                       See `trimMethod` for more details.
+#' @param trimMethod     The trimming method to be performed. Three methods are supported:
+#'
+#' - symmetric: trims all units with estimated PS outside an interval
+#' [`trimFraction`,1−`trimFraction`], following Crump et al. (2009).
+#' - asymmetric: removes all units not in the overlap PS range and trims the
+#' `trimFraction` target persons with the lowest propensity scores and comparator
+#' persons with the highest propensity scores, following Stürmer et al. (2010).
+#' - reverse asymmetric: removes all units not in the overlap PS range and trims the
+#' `trimFraction` target persons with the highest propensity scores and comparator
+#' persons with the lowest propensity scores (not suggested).
 #'
 #' @details
 #' The data frame should have the following three columns:
@@ -755,24 +766,68 @@ computePsAuc <- function(data, confidenceIntervals = FALSE, maxRows = 100000) {
 #' data <- data.frame(rowId = rowId, treatment = treatment, propensityScore = propensityScore)
 #' result <- trimByPs(data, 0.05)
 #'
+#'@references
+#' Crump, Richard K., V. Joseph Hotz, Guido W. Imbens, and Oscar A. Mitnik. 2009. Dealing with limited overlap in estimation of average treatment effects. Biometrika 96(1): 187-199.
+#'
+#' Stürmer T, Rothman KJ, Avorn J, Glynn RJ. Treatment effects in the presence of unmeasured confounding: dealing with observations in the tails of the propensity score distribution--a simulation study. Am J Epidemiol. 2010 Oct 1;172(7):843-54.
+#'
 #' @export
-trimByPs <- function(population, trimFraction = 0.05) {
+trimByPs <- function(population,
+                     trimFraction = 0.05,
+                     trimMethod = "asymmetric") {
   errorMessages <- checkmate::makeAssertCollection()
   checkmate::assertDataFrame(population, add = errorMessages)
   checkmate::assertNames(colnames(population), must.include = c("treatment", "propensityScore"), add = errorMessages)
   checkmate::assertNumber(trimFraction, lower = 0, upper = 1, add = errorMessages)
+  checkmate::assertChoice(trimMethod, c("asymmetric", "symmetric", "reverse asymmetric"), add = errorMessages)
   checkmate::reportAssertions(collection = errorMessages)
 
-  cutoffTarget <- quantile(population$propensityScore[population$treatment == 1], 1 - trimFraction)
-  cutoffComparator <- quantile(population$propensityScore[population$treatment == 0], trimFraction)
-  result <- population[(population$propensityScore <= cutoffTarget & population$treatment == 1) |
-                         (population$propensityScore >= cutoffComparator & population$treatment == 0), ]
+  if (trimMethod %in% c("asymmetric", "reverse asymmetric")){
+    # Remove overlapping patients
+    bounds <- population |>
+      group_by(treatment) |>
+      summarise(minPs = min(propensityScore),
+                maxPs = max(propensityScore),
+                .groups = "drop"
+      )
+    lower <- max(bounds$minPs)
+    upper <- min(bounds$maxPs)
+    populationOverlap <- population |>
+      filter(propensityScore >= lower,
+             propensityScore <= upper)
+
+    ParallelLogger::logDebug("Removed ", nrow(population) - nrow(populationOverlap),
+                             " patients not in PS overlap.")
+  }
+
+  if (trimMethod == "symmetric"){
+    result <- population |>
+      filter(propensityScore > trimFraction,
+             propensityScore < (1 - trimFraction))
+  } else if (trimMethod == "asymmetric"){
+    cutoffTarget <- quantile(populationOverlap$propensityScore[populationOverlap$treatment == 1], trimFraction)
+    cutoffComparator <- quantile(populationOverlap$propensityScore[populationOverlap$treatment == 0], 1 - trimFraction)
+    result <- populationOverlap[(populationOverlap$propensityScore >= cutoffTarget & populationOverlap$treatment == 1) |
+                           (populationOverlap$propensityScore <= cutoffComparator & populationOverlap$treatment == 0), ]
+  } else if (trimMethod == "reverse asymmetric"){
+    cutoffTarget <- quantile(populationOverlap$propensityScore[populationOverlap$treatment == 1], 1 - trimFraction)
+    cutoffComparator <- quantile(populationOverlap$propensityScore[populationOverlap$treatment == 0], trimFraction)
+    result <- populationOverlap[(populationOverlap$propensityScore <= cutoffTarget & populationOverlap$treatment == 1) |
+                           (populationOverlap$propensityScore >= cutoffComparator & populationOverlap$treatment == 0), ]
+  }
+
+  # check if we removed an entire treatment group:
+  if (all(result$treatment == 0) || all(result$treatment == 1)) {
+    stop("One or more groups removed after trimming, consider updating trimFraction")
+  }
+
   if (!is.null(attr(result, "metaData"))) {
     attr(
       result,
       "metaData"
     )$attrition <- rbind(attr(result, "metaData")$attrition, getCounts(result, paste("Trimmed by PS")))
   }
+
   ParallelLogger::logDebug("Population size after trimming is ", nrow(result))
   return(result)
 }

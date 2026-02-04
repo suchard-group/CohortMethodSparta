@@ -111,7 +111,8 @@ createCreatePsArgs <- function(excludeCovariateIds = c(),
 #' @param trimFraction  This fraction will be removed from each treatment group. In the target group, persons with the highest propensity scores will be removed, in the comparator group person with the lowest scores will be removed.
 #'
 #' @export
-createTrimByPsArgs <- function(trimFraction = 0.05) {
+createTrimByPsArgs <- function(trimFraction = 0.05,
+                               trimMethod = "asymmetric") {
   analysis <- list()
   for (name in names(formals(createTrimByPsArgs))) {
     analysis[[name]] <- get(name)
