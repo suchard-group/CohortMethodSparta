@@ -755,6 +755,11 @@ getPs <- function(psFile) {
     ps <- get("ps", envir = cache)
   } else {
     ps <- readRDS(psFile)
+    columnsToKeep <- c("rowId", "treatment", "personSeqId", "cohortStartDate", "propensityScore", "preferenceScore", "iptw")
+    if ("outcomeCount" %in% colnames(ps)) {
+      columnsToKeep <- c(columnsToKeep, "outcomeCount", "timeAtRisk", "survivalTime")
+    }
+    ps <- ps[, columnsToKeep]
     assign("ps", ps, envir = cache)
     assign("psFile", psFile, envir = cache)
   }
@@ -762,7 +767,7 @@ getPs <- function(psFile) {
 }
 
 doCreateCmDataObject <- function(params) {
-  ParallelLogger::logDebug(sprintf("Calling getDbCohortMethodData() for targetId %d, comparatorId %d",
+  ParallelLogger::logDebug(sprintf("Calling getDbCohortMethodData() for targetId %s, comparatorId %s",
                                    params$args$targetId,
                                    params$args$comparatorId))
   cohortMethodData <- do.call("getDbCohortMethodData", params$args)
@@ -774,7 +779,7 @@ doCreateStudyPopObject <- function(params) {
   cohortMethodData <- getCohortMethodData(params$cohortMethodDataFile)
   args <- params$args
   args$cohortMethodData <- cohortMethodData
-  ParallelLogger::logDebug(sprintf("Calling createStudyPopulation() using %s for outcomeId %d",
+  ParallelLogger::logDebug(sprintf("Calling createStudyPopulation() using %s for outcomeId %s",
                                    params$cohortMethodDataFile,
                                    args$outcomeId))
   studyPop <- do.call("createStudyPopulation", args)
@@ -961,7 +966,7 @@ doFitOutcomeModelPlus <- function(params) {
   }
   cohortMethodData <- getCohortMethodData(cohortMethodDataFile)
 
-  ParallelLogger::logDebug(sprintf("Calling createStudyPopulation(), performing matching etc., and calling fitOutcomeModel() using %s for outcomeID %d",
+  ParallelLogger::logDebug(sprintf("Calling createStudyPopulation(), performing matching etc., and calling fitOutcomeModel() using %s for outcomeID %s",
                                    cohortMethodDataFile,
                                    params$args$createStudyPopArgs$outcomeId))
 
@@ -980,6 +985,7 @@ doFitOutcomeModelPlus <- function(params) {
   } else {
     ps <- studyPop
   }
+  rm(studyPop)
   ps <- applyTrimMatchStratify(ps, params$args)
   args <- params$args$fitOutcomeModelArgs
   args$population <- ps

@@ -1,14 +1,22 @@
-CohortMethod 5.5.0
+CohortMethod 5.5.2
 ==================
 
-Changes:
+Bugfixes:
 
-1. Added `threshold` and `alpha` arguments to `computeCovariateBalance()`, implementing George's new balance metric (ony mark covariates as unbalanced when absolute SDM is **significantly** greater than the threshold). Default values maintain old behaviour.
+1. Reorganized `createPs()` to be much more efficient for large study populations (millions of patients).
 
-2. Added `showUnbalanced` argument to `plotCovariateBalanceScatterPlot()`. Default value maintains old behavior.
+2. Reorganized `fitOutcomeModel()` to be much more efficient for large study populations (millions of patients).
 
 
-CohortMethod 5.4.1
+CohortMethod 5.5.1
+==================
+
+Bugfixes:
+
+1. Fixed error thrown by Kaplan Meier curves functions when only one of the cohorts is empty.
+
+
+CohortMethod 5.5.0
 ==================
 
 Changes:
@@ -25,6 +33,8 @@ Changes:
 Bugfixes:
 
 1. Fixed NA covariate prevalences when calling `createCohortMethodDataSimulationProfile()`.
+
+2. Added some optimization to `createPs()` to prevent running out of memory for large data objects using Andromeda >= 1.0.0.
 
 
 CohortMethod 5.4.0

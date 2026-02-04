@@ -12,6 +12,7 @@ fitOutcomeModel(
   useCovariates = FALSE,
   inversePtWeighting = FALSE,
   bootstrapCi = FALSE,
+  bootstrapRegularization = FALSE,
   bootstrapReplicates = 1000,
   interactionCovariateIds = c(),
   excludeCovariateIds = c(),
@@ -62,7 +63,8 @@ the likelihood for coefficient of variables is sampled. See details.}
 of the likelihood function. See details.}
 
 \item{prior}{The prior used to fit the model. See \code{\link[Cyclops:createPrior]{Cyclops::createPrior()}}
-for details.}
+for details. The prior is only applied to non-treatment variables,
+so is not used when \code{useCovariates = FALSE}.}
 
 \item{control}{The control object used to control the cross-validation used to
 determine the hyperparameters of the prior (if applicable). See
