@@ -93,16 +93,19 @@ loadCohortMethodData <- function(file) {
 #' @rdname CohortMethodData-class
 setMethod("show", "CohortMethodData", function(object) {
   metaData <- attr(object, "metaData")
-  cli::cat_line(pillar::style_subtle("# CohortMethodData object"))
-  cli::cat_line("")
-  cli::cat_line(paste("Target cohort ID:", metaData$targetId))
-  cli::cat_line(paste("Comparator cohort ID:", metaData$comparatorId))
-  cli::cat_line(paste(
+  writeLines("# CohortMethodData object")
+  writeLines("")
+  writeLines(paste("Target cohort ID:", metaData$targetId))
+  writeLines(paste("Comparator cohort ID:", metaData$comparatorId))
+  if (!is.null(metaData$nestingCohortId)) {
+    writeLines(paste("Nesting cohort ID:", metaData$nestingCohortId))
+  }
+  writeLines(paste(
     "Outcome cohort ID(s):",
     paste(metaData$outcomeIds, collapse = ",")
   ))
-  cli::cat_line("")
-  cli::cat_line(pillar::style_subtle("Inherits from CovariateData:"))
+  writeLines("")
+  writeLines("Inherits from CovariateData:")
   class(object) <- "CovariateData"
   attr(class(object), "package") <- "FeatureExtraction"
   show(object)
@@ -152,6 +155,9 @@ print.summary.CohortMethodData <- function(x, ...) {
   writeLines("")
   writeLines(paste("Target cohort ID:", x$metaData$targetId))
   writeLines(paste("Comparator cohort ID:", x$metaData$comparatorId))
+  if (!is.null(x$metaData$nestingCohortId)) {
+    writeLines(paste("Nesting cohort ID:", x$metaData$nestingCohortId))
+  }
   writeLines(paste("Outcome cohort ID(s):", x$metaData$outcomeIds, collapse = ","))
   writeLines("")
   writeLines(paste("Target persons:", paste(x$targetPersons)))

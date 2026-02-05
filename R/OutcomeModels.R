@@ -30,31 +30,8 @@
 #' @param cohortMethodData      An object of type [CohortMethodData] as generated using
 #'                              [getDbCohortMethodData()]. Can be omitted if not using covariates and
 #'                              not using interaction terms.
-#' @param modelType             The type of outcome model that will be used. Possible values are
-#'                              "logistic", "poisson", or "cox".
-#' @param stratified            Should the regression be conditioned on the strata defined in the
-#'                              population object (e.g. by matching or stratifying on propensity
-#'                              scores)?
-#' @param useCovariates         Whether to use the covariates in the `cohortMethodData`
-#'                              object in the outcome model.
-#' @param inversePtWeighting    Use inverse probability of treatment weighting (IPTW)
-#' @param bootstrapCi           Compute confidence interval using bootstrapping instead of likelihood profiling?
-#' @param bootstrapReplicates   When using bootstrapping to compute confidence intervals, how many replicates
-#'                              should be sampled?
-#' @param interactionCovariateIds  An optional vector of covariate IDs to use to estimate interactions
-#'                                 with the main treatment effect.
-#' @param excludeCovariateIds   Exclude these covariates from the outcome model.
-#' @param includeCovariateIds   Include only these covariates in the outcome model.
-#' @param profileGrid           A one-dimensional grid of points on the log(relative risk) scale where
-#'                              the likelihood for coefficient of variables is sampled. See details.
-#' @param profileBounds         The bounds (on the log relative risk scale) for the adaptive sampling
-#'                              of the likelihood function. See details.
-#' @param prior                 The prior used to fit the model. See [Cyclops::createPrior()]
-#'                              for details. The prior is only applied to non-treatment variables,
-#'                              so is not used when `useCovariates = FALSE`.
-#' @param control               The control object used to control the cross-validation used to
-#'                              determine the hyperparameters of the prior (if applicable). See
-#'                              [Cyclops::createControl()] for details.
+#' @param fitOutcomeModelArgs   An object of type `FitOutcomeModelArgs` as generated using the
+#'                              [createFitOutcomeModelArgs()] function.
 #'
 #' @return
 #' An object of class `OutcomeModel`. Generic function `print`, `coef`, and
@@ -63,28 +40,7 @@
 #' @export
 fitOutcomeModel <- function(population,
                             cohortMethodData = NULL,
-                            modelType = "logistic",
-                            stratified = FALSE,
-                            useCovariates = FALSE,
-                            inversePtWeighting = FALSE,
-                            bootstrapCi = FALSE,
-                            bootstrapRegularization = FALSE,
-                            bootstrapReplicates = 1000,
-                            interactionCovariateIds = c(),
-                            excludeCovariateIds = c(),
-                            includeCovariateIds = c(),
-                            profileGrid = NULL,
-                            profileBounds = c(log(0.1), log(10)),
-                            prior = createPrior("laplace", useCrossValidation = TRUE),
-                            control = createControl(
-                              cvType = "auto",
-                              seed = 1,
-                              resetCoefficients = TRUE,
-                              startingVariance = 0.01,
-                              tolerance = 2e-07,
-                              cvRepetitions = 10,
-                              noiseLevel = "quiet"
-                            )) {
+                            fitOutcomeModelArgs = createFitOutcomeModelArgs()) {
   errorMessages <- checkmate::makeAssertCollection()
   checkmate::assertDataFrame(population, null.ok = TRUE, add = errorMessages)
   checkmate::assertNames(names(population), must.include = c("rowId", "outcomeCount", "treatment", "timeAtRisk", "survivalTime", "personSeqId"), add = errorMessages)
@@ -92,50 +48,20 @@ fitOutcomeModel <- function(population,
     checkmate::assertNames(names(cohortMethodData), must.include = c("analysisRef", "cohorts", "covariateRef", "covariates", "outcomes"), add = errorMessages)
   }
   checkmate::assertClass(cohortMethodData, "CohortMethodData", null.ok = TRUE, add = errorMessages)
-  checkmate::assertChoice(modelType, c("logistic", "poisson", "cox"), add = errorMessages)
-  checkmate::assertLogical(stratified, len = 1, add = errorMessages)
-  checkmate::assertLogical(useCovariates, len = 1, add = errorMessages)
-  checkmate::assertLogical(inversePtWeighting, len = 1, add = errorMessages)
-  checkmate::assertLogical(bootstrapCi, len = 1, add = errorMessages)
-  checkmate::assert_int(bootstrapReplicates, lower = 1, add = errorMessages)
-  .assertCovariateId(interactionCovariateIds, null.ok = TRUE, add = errorMessages)
-  .assertCovariateId(excludeCovariateIds, null.ok = TRUE, add = errorMessages)
-  .assertCovariateId(includeCovariateIds, null.ok = TRUE, add = errorMessages)
-  checkmate::assertNumeric(profileGrid, null.ok = TRUE, add = errorMessages)
-  checkmate::assertNumeric(profileBounds, null.ok = TRUE, len = 2, add = errorMessages)
-  checkmate::assertClass(prior, "cyclopsPrior", add = errorMessages)
-  checkmate::assertClass(control, "cyclopsControl", add = errorMessages)
+  checkmate::assertR6(fitOutcomeModelArgs, "FitOutcomeModelArgs", add = errorMessages)
   checkmate::reportAssertions(collection = errorMessages)
-  if (stratified && nrow(population) > 0 && is.null(population$stratumId)) {
+  if (fitOutcomeModelArgs$stratified && nrow(population) > 0 && is.null(population$stratumId)) {
     stop("Requested stratified analysis, but no stratumId column found in population. Please use matchOnPs or stratifyByPs to create strata.")
   }
-  if (is.null(cohortMethodData) && useCovariates) {
+  if (is.null(cohortMethodData) && fitOutcomeModelArgs$useCovariates) {
     stop("Requested all covariates for model, but no cohortMethodData object specified")
   }
-  if (is.null(cohortMethodData) && length(interactionCovariateIds) != 0) {
+  if (is.null(cohortMethodData) && length(fitOutcomeModelArgs$interactionCovariateIds) != 0) {
     stop("Requesting interaction terms in model, but no cohortMethodData object specified")
   }
-  if (any(excludeCovariateIds %in% interactionCovariateIds)) {
-    stop("Can't exclude covariates that are to be used for interaction terms")
-  }
-  if (any(includeCovariateIds %in% excludeCovariateIds)) {
-    stop("Can't exclude covariates that are to be included")
-  }
-  if (inversePtWeighting && is.null(population$iptw)) {
+  if (fitOutcomeModelArgs$inversePtWeighting && is.null(population$iptw)) {
     stop("Requested inverse probability weighting, but no IPTW are provided. Use createPs to generate them")
   }
-  if (!is.null(profileGrid) && !is.null(profileBounds)) {
-    stop("Can't specify both a grid and bounds for likelihood profiling")
-  }
-  if (bootstrapCi && !is.null(interactionCovariateIds)) {
-    stop("Bootstrap confidence intervals has not been implemented for interactions")
-  }
-  if (bootstrapCi && useCovariates) {
-    stop("Bootstrap confidence intervals has not been implemented for models including other covariates")
-  }
-  # if (bootstrapCi && modelType != "cox") {
-  #   stop("Bootstrap confidence intervals has only been implemented for Cox model")
-  # }
 
   start <- Sys.time()
   treatmentEstimate <- NULL
@@ -149,19 +75,20 @@ fitOutcomeModel <- function(population,
   treatmentVarId <- NA
   subgroupCounts <- NULL
   logLikelihoodProfile <- NULL
+  prior <- fitOutcomeModelArgs$prior
   status <- "NO MODEL FITTED"
   outcomeModel <- attr(population, "metaData")
-  outcomeModel$outcomeModelType <- modelType
-  outcomeModel$outcomeModelStratified <- stratified
-  outcomeModel$outcomeModelUseCovariates <- useCovariates
-  outcomeModel$inversePtWeighting <- inversePtWeighting
-  if (inversePtWeighting) {
+  outcomeModel$outcomeModelType <- fitOutcomeModelArgs$modelType
+  outcomeModel$outcomeModelStratified <- fitOutcomeModelArgs$stratified
+  outcomeModel$outcomeModelUseCovariates <- fitOutcomeModelArgs$useCovariates
+  outcomeModel$inversePtWeighting <- fitOutcomeModelArgs$inversePtWeighting
+  if (fitOutcomeModelArgs$inversePtWeighting) {
     outcomeModel$targetEstimator <- outcomeModel$iptwEstimator
   }
   outcomeModel$iptwEstimator <- NULL
   outcomeModel$populationCounts <- getCounts(population, "Population count")
-  outcomeModel$outcomeCounts <- getOutcomeCounts(population, modelType)
-  outcomeModel$timeAtRisk <- getTimeAtRisk(population, modelType)
+  outcomeModel$outcomeCounts <- getOutcomeCounts(population, fitOutcomeModelArgs$modelType)
+  outcomeModel$timeAtRisk <- getTimeAtRisk(population, fitOutcomeModelArgs$modelType)
 
   if (nrow(population) == 0) {
     status <- "NO SUBJECTS IN POPULATION, CANNOT FIT"
@@ -171,21 +98,21 @@ fitOutcomeModel <- function(population,
     # Informative population ---------------------------------------------------------
     informativePopulation <- getInformativePopulation(
       population = population,
-      stratified = stratified,
-      inversePtWeighting = inversePtWeighting,
-      modelType = modelType
+      stratified = fitOutcomeModelArgs$stratified,
+      inversePtWeighting = fitOutcomeModelArgs$inversePtWeighting,
+      modelType = fitOutcomeModelArgs$modelType
     )
 
     if (sum(informativePopulation$treatment == 1) == 0 || sum(informativePopulation$treatment == 0) == 0) {
       status <- "NO STRATA WITH BOTH TARGET, COMPARATOR, AS WELL AS THE OUTCOME. CANNOT FIT"
     } else {
-      if (useCovariates) {
+      if (fitOutcomeModelArgs$useCovariates) {
         # Add covariates ---------------------------------------------------------------------------------
         covariateData <- filterAndTidyCovariates(
           cohortMethodData = cohortMethodData,
           includeRowIds = informativePopulation$rowId,
-          includeCovariateIds = includeCovariateIds,
-          excludeCovariateIds = excludeCovariateIds
+          includeCovariateIds = fitOutcomeModelArgs$includeCovariateIds,
+          excludeCovariateIds = fitOutcomeModelArgs$excludeCovariateIds
         )
         on.exit(close(covariateData))
         outcomeModel$deletedRedundantCovariateIdsForOutcomeModel <- attr(covariateData, "metaData")$deletedRedundantCovariateIds
@@ -207,7 +134,7 @@ fitOutcomeModel <- function(population,
 
         appendToTable(covariateData$covariates, treatmentCovariate)
 
-        if (stratified || modelType == "cox") {
+        if (fitOutcomeModelArgs$stratified || fitOutcomeModelArgs$modelType == "cox") {
           prior$exclude <- treatmentVarId # Exclude treatment variable from regularization
         } else {
           prior$exclude <- c(0, treatmentVarId) # Exclude treatment variable and intercept from regularization
@@ -230,13 +157,13 @@ fitOutcomeModel <- function(population,
 
       # Interaction terms -----------------------------------------------------------------------------------
       interactionTerms <- NULL
-      if (length(interactionCovariateIds) != 0) {
+      if (length(fitOutcomeModelArgs$interactionCovariateIds) != 0) {
         covariateData$covariatesSubset <- cohortMethodData$covariates |>
-          filter(.data$covariateId %in% interactionCovariateIds) |>
+          filter(.data$covariateId %in% fitOutcomeModelArgs$interactionCovariateIds) |>
           filter(.data$rowId %in% local(informativePopulation$rowId))
 
         # Cannot have interaction terms without main effects, so add covariates if they haven't been included already:
-        if (!useCovariates) {
+        if (!fitOutcomeModelArgs$useCovariates) {
           appendToTable(covariateData$covariates, covariateData$covariatesSubset)
           mainEffectTerms <- covariateData$covariatesSubset |>
             distinct(.data$covariateId) |>
@@ -245,10 +172,10 @@ fitOutcomeModel <- function(population,
             collect()
         } else {
           # TODO: check if main effect covariate exists in data
-          mainEffectTermsCheck <- !is.null(covariateData$covariates %>%
-                                             distinct(.data$covariateId) %>%
-                                             inner_join(covariateData$covariateRef, by = "covariateId") %>%
-                                             select(id = "covariateId", name = "covariateName") %>%
+          mainEffectTermsCheck <- !is.null(covariateData$covariates |>
+                                             distinct(.data$covariateId) |>
+                                             inner_join(covariateData$covariateRef, by = "covariateId") |>
+                                             select(id = "covariateId", name = "covariateName") |>
                                              collect())
 
           if (!mainEffectTermsCheck) {
@@ -258,7 +185,7 @@ fitOutcomeModel <- function(population,
 
         # Create interaction terms
         interactionTerms <- covariateData$covariateRef |>
-          filter(.data$covariateId %in% interactionCovariateIds) |>
+          filter(.data$covariateId %in% fitOutcomeModelArgs$interactionCovariateIds) |>
           select("covariateId", "covariateName") |>
           collect()
 
@@ -288,30 +215,30 @@ fitOutcomeModel <- function(population,
         if (nrow(interactionTerms) == 0) {
           interactionTerms <- NULL
         } else {
-          if (useCovariates) {
-            prior$exclude <- unique(c(prior$exclude, interactionTerms$covariateId, interactionTerms$interactionId))
+          if (fitOutcomeModelArgs$useCovariates) {
+            prior$exclude <- unique(c(prior$exclude,
+                                      interactionTerms$covariateId,
+                                      interactionTerms$interactionId))
           }
-          subgroupCounts <- createSubgroupCounts(interactionTerms$covariateId, covariateData$covariatesSubset, population, modelType)
+          subgroupCounts <- createSubgroupCounts(
+            interactionCovariateIds = interactionTerms$covariateId,
+            covariatesSubset = covariateData$covariatesSubset,
+            population = population,
+            modelType = fitOutcomeModelArgs$modelType
+          )
         }
       }
 
-      # If bootstrap, normal prior -------------------------------------------------------------------------
-      if(bootstrapCi & bootstrapRegularization){
-        prior <- Cyclops::createPrior("normal",
-                                      variance = 100)
-      }
-
       # Fit model -------------------------------------------------------------------------------------------
-      if (stratified &&
-          prior$priorType != "none" &&
-          prior$useCrossValidation &&
-          control$selectorType == "byPid" &&
-          length(unique(informativePopulation$stratumId)) < control$fold) {
+      if (prior$priorType != "none" &&
+          isTRUE(prior$useCrossValidation) &&
+          fitOutcomeModelArgs$control$selectorType == "byPid" &&
+          length(unique(informativePopulation$stratumId)) < fitOutcomeModelArgs$control$fold) {
         fit <- "NUMBER OF INFORMATIVE STRATA IS SMALLER THAN THE NUMBER OF CV FOLDS, CANNOT FIT"
       } else {
         covariateData$outcomes <- informativePopulation
         outcomes <- covariateData$outcomes
-        if (stratified) {
+        if (fitOutcomeModelArgs$stratified) {
           covariates <- covariateData$covariates %>%
             inner_join(select(covariateData$outcomes, "rowId", "stratumId"), by = "rowId")
         } else {
@@ -321,13 +248,14 @@ fitOutcomeModel <- function(population,
         rm(population)
         rm(informativePopulation)
         Andromeda::flushAndromeda(covariateData)
+
         cyclopsData <- Cyclops::convertToCyclopsData(
           outcomes = outcomes,
           covariates = covariates,
-          addIntercept = (!stratified && !modelType == "cox"),
+          addIntercept = (!fitOutcomeModelArgs$stratified && !fitOutcomeModelArgs$modelType == "cox"),
           modelType = modelTypeToCyclopsModelType(
-            modelType,
-            stratified
+            fitOutcomeModelArgs$modelType,
+            fitOutcomeModelArgs$stratified
           ),
           checkRowIds = FALSE,
           normalize = NULL,
@@ -341,7 +269,7 @@ fitOutcomeModel <- function(population,
           if (any(separability)) {
             removeCovariateIds <- as.numeric(names(separability)[separability])
             # Add main effects of separable interaction effects, and the other way around:
-            if (!useCovariates) {
+            if (!fitOutcomeModelArgs$useCovariates) {
               removeCovariateIds <- unique(c(
                 removeCovariateIds,
                 interactionTerms$covariateId[interactionTerms$interactionId %in% removeCovariateIds]
@@ -357,13 +285,12 @@ fitOutcomeModel <- function(population,
             cyclopsData <- Cyclops::convertToCyclopsData(
               outcomes = outcomes,
               covariates = covariates,
-              addIntercept = (!stratified && !modelType == "cox"),
+              addIntercept = (!fitOutcomeModelArgs$stratified && !fitOutcomeModelArgs$modelType == "cox"),
               modelType = modelTypeToCyclopsModelType(
-                modelType,
-                stratified
+                fitOutcomeModelArgs$modelType,
+                fitOutcomeModelArgs$stratified
               ),
               checkSorting = TRUE,
-              checkRowIds = FALSE,
               normalize = NULL,
               quiet = TRUE
             )
@@ -381,7 +308,7 @@ fitOutcomeModel <- function(population,
         }
         fit <- tryCatch(
           {
-            Cyclops::fitCyclopsModel(cyclopsData, prior = prior, control = control)
+            Cyclops::fitCyclopsModel(cyclopsData, prior = prior, control = fitOutcomeModelArgs$control)
           },
           error = function(e) {
             e$message
@@ -392,26 +319,16 @@ fitOutcomeModel <- function(population,
         status <- fit
       } else {
         # Retrieve likelihood profile
-        if (!is.null(profileGrid) || !is.null(profileBounds)) {
+        if (!is.null(fitOutcomeModelArgs$profileGrid) ||
+            !is.null(fitOutcomeModelArgs$profileBounds)) {
           logLikelihoodProfile <- Cyclops::getCyclopsProfileLogLikelihood(
             object = fit,
             parm = treatmentVarId,
-            x = profileGrid,
-            bounds = profileBounds,
+            x = fitOutcomeModelArgs$profileGrid,
+            bounds = fitOutcomeModelArgs$profileBounds,
             tolerance = 0.1,
-            includePenalty = TRUE
-          )
-        }
-        if(fit$return_flag == "POOR_BLR_STEP"){
-          message(paste("Model returned POOR_BLR_STEP, starting coefficients at non-zero instead."))
-          fit <- tryCatch(
-            {
-              Cyclops::fitCyclopsModel(cyclopsData, prior = prior, control = control,
-                                       startingCoefficients = rep(1, length(getCovariateIds(cyclopsData))))
-            },
-            error = function(e) {
-              e$message
-            }
+            includePenalty = TRUE,
+            returnDerivatives = TRUE
           )
         }
         if (fit$return_flag != "SUCCESS") {
@@ -420,20 +337,23 @@ fitOutcomeModel <- function(population,
           status <- "OK"
           coefficients <- coef(fit)
           logRr <- coef(fit)[names(coef(fit)) == as.character(treatmentVarId)]
-          if (bootstrapCi) {
-            bootstrap <- tryCatch(
-              Cyclops::runBootstrap(fit, bootstrapReplicates),
-              error = function(e){
-                if(!bootstrapRegularization){
-                  status <<- "Bootstrap NA"
-                }
+          if (fitOutcomeModelArgs$bootstrapCi) {
+            bootstrapSummary <- tryCatch(
+              {
+                bootstrap <- Cyclops::runBootstrap(fit, fitOutcomeModelArgs$bootstrapReplicates)
+                bootstrap$summary[as.character(treatmentVarId),]
+              },
+              error = function(e) {
+                missing(e) # suppresses R CMD check note
+                list(
+                  bpi_lower = -Inf,
+                  bpi_upper = Inf,
+                  std_err = NA
+                )
               }
             )
-            if(status != "Bootstrap NA"){
-              bootstrapSummary <- bootstrap$summary[as.character(treatmentVarId),]
-              ci <- c(0, bootstrapSummary$bpi_lower, bootstrapSummary$bpi_upper)
-              seLogRr <- bootstrapSummary$std_err
-            }
+            ci <- c(0, bootstrapSummary$bpi_lower, bootstrapSummary$bpi_upper)
+            seLogRr <- bootstrapSummary$std_err
           } else {
             ci <- tryCatch(
               {
@@ -449,73 +369,71 @@ fitOutcomeModel <- function(population,
             }
             seLogRr <- (ci[3] - ci[2]) / (2 * qnorm(0.975))
           }
-          if (status == "OK"){
-            llNull <- Cyclops::getCyclopsProfileLogLikelihood(
-              object = fit,
-              parm = treatmentVarId,
-              x = 0,
-              includePenalty = FALSE
-            )$value
-            llr <- fit$log_likelihood - llNull
-            treatmentEstimate <- tibble(
-              logRr = logRr,
-              logLb95 = ci[2],
-              logUb95 = ci[3],
-              seLogRr = seLogRr,
-              llr = llr
-            )
-            priorVariance <- fit$variance[1]
-            logLikelihood <- fit$log_likelihood
-            if (!is.null(mainEffectTerms)) {
-              logRr <- coef(fit)[match(as.character(mainEffectTerms$id), names(coef(fit)))]
-              if (prior$priorType == "none") {
-                ci <- tryCatch(
-                  {
-                    confint(fit,
-                            parm = mainEffectTerms$id, includePenalty = TRUE,
-                            overrideNoRegularization = TRUE
-                    )
-                  },
-                  error = function(e) {
-                    missing(e) # suppresses R CMD check note
-                    t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
-                  }
-                )
-              } else {
-                ci <- t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
-              }
-              seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
-              mainEffectEstimates <- tibble(
-                covariateId = mainEffectTerms$id,
-                coariateName = mainEffectTerms$name,
-                logRr = logRr,
-                logLb95 = ci[, 2],
-                logUb95 = ci[, 3],
-                seLogRr = seLogRr
-              )
-            }
-
-            if (!is.null(interactionTerms)) {
-              logRr <- coef(fit)[match(as.character(interactionTerms$interactionId), names(coef(fit)))]
+          llNull <- Cyclops::getCyclopsProfileLogLikelihood(
+            object = fit,
+            parm = treatmentVarId,
+            x = 0,
+            includePenalty = FALSE
+          )$value
+          llr <- fit$log_likelihood - llNull
+          treatmentEstimate <- tibble(
+            logRr = logRr,
+            logLb95 = ci[2],
+            logUb95 = ci[3],
+            seLogRr = seLogRr,
+            llr = llr
+          )
+          priorVariance <- fit$variance[1]
+          logLikelihood <- fit$log_likelihood
+          if (!is.null(mainEffectTerms)) {
+            logRr <- coef(fit)[match(as.character(mainEffectTerms$id), names(coef(fit)))]
+            if (prior$priorType == "none") {
               ci <- tryCatch(
                 {
-                  confint(fit, parm = interactionTerms$interactionId, includePenalty = TRUE)
+                  confint(fit,
+                          parm = mainEffectTerms$id, includePenalty = TRUE,
+                          overrideNoRegularization = TRUE
+                  )
                 },
                 error = function(e) {
                   missing(e) # suppresses R CMD check note
-                  t(array(c(0, -Inf, Inf), dim = c(3, nrow(interactionTerms))))
+                  t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
                 }
               )
-              seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
-              interactionEstimates <- data.frame(
-                covariateId = interactionTerms$covariateId,
-                interactionName = interactionTerms$interactionName,
-                logRr = logRr,
-                logLb95 = ci[, 2],
-                logUb95 = ci[, 3],
-                seLogRr = seLogRr
-              )
+            } else {
+              ci <- t(array(c(0, -Inf, Inf), dim = c(3, nrow(mainEffectTerms))))
             }
+            seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
+            mainEffectEstimates <- tibble(
+              covariateId = mainEffectTerms$id,
+              coariateName = mainEffectTerms$name,
+              logRr = logRr,
+              logLb95 = ci[, 2],
+              logUb95 = ci[, 3],
+              seLogRr = seLogRr
+            )
+          }
+
+          if (!is.null(interactionTerms)) {
+            logRr <- coef(fit)[match(as.character(interactionTerms$interactionId), names(coef(fit)))]
+            ci <- tryCatch(
+              {
+                confint(fit, parm = interactionTerms$interactionId, includePenalty = TRUE)
+              },
+              error = function(e) {
+                missing(e) # suppresses R CMD check note
+                t(array(c(0, -Inf, Inf), dim = c(3, nrow(interactionTerms))))
+              }
+            )
+            seLogRr <- (ci[, 3] - ci[, 2]) / (2 * qnorm(0.975))
+            interactionEstimates <- data.frame(
+              covariateId = interactionTerms$covariateId,
+              interactionName = interactionTerms$interactionName,
+              logRr = logRr,
+              logLb95 = ci[, 2],
+              logUb95 = ci[, 3],
+              seLogRr = seLogRr
+            )
           }
         }
       }
@@ -528,7 +446,7 @@ fitOutcomeModel <- function(population,
   outcomeModel$outcomeModelLogLikelihood <- logLikelihood
   outcomeModel$outcomeModelTreatmentEstimate <- treatmentEstimate
   outcomeModel$outcomeModelmainEffectEstimates <- mainEffectEstimates
-  if (length(interactionCovariateIds) != 0) {
+  if (length(fitOutcomeModelArgs$interactionCovariateIds) != 0) {
     outcomeModel$outcomeModelInteractionEstimates <- interactionEstimates
   }
   outcomeModel$outcomeModelStatus <- status

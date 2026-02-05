@@ -4,33 +4,19 @@
 \alias{trimByPs}
 \title{Trim persons by propensity score}
 \usage{
-trimByPs(population, trimFraction = 0.05, trimMethod = "asymmetric")
+trimByPs(population, trimByPsArgs = createTrimByPsArgs(trimFraction = 0.05))
 }
 \arguments{
 \item{population}{A data frame with the three columns described below}
 
-\item{trimFraction}{For \code{trimFraction = symmetric}: the PS cut-off value.
-For \code{trimFraction = asymmetric} or \verb{reverse asymmetric}: the
-fraction that will be removed from each treatment group.
-See \code{trimMethod} for more details.}
-
-\item{trimMethod}{The trimming method to be performed. Three methods are supported:
-\itemize{
-\item symmetric: trims all units with estimated PS outside an interval
-, following Crump et al. (2009).
-\item asymmetric: removes all units not in the overlap PS range and trims the
-\code{trimFraction} target persons with the lowest propensity scores and comparator
-persons with the highest propensity scores, following Stürmer et al. (2010).
-\item reverse asymmetric: removes all units not in the overlap PS range and trims the
-\code{trimFraction} target persons with the highest propensity scores and comparator
-persons with the lowest propensity scores (not suggested).
-}}
+\item{trimByPsArgs}{An object of type \code{trimByPsArgs} as created by the
+\code{\link[=createTrimByPsArgs]{createTrimByPsArgs()}} function.}
 }
 \value{
 Returns a tibble with the same three columns as the input.
 }
 \description{
-Use the provided propensity scores to trim subjects with extreme scores.
+Use the provided propensity scores to trim subjects with extreme scores or weights.
 }
 \details{
 The data frame should have the following three columns:
@@ -44,12 +30,15 @@ The data frame should have the following three columns:
 rowId <- 1:2000
 treatment <- rep(0:1, each = 1000)
 propensityScore <- c(runif(1000, min = 0, max = 1), runif(1000, min = 0, max = 1))
-data <- data.frame(rowId = rowId, treatment = treatment, propensityScore = propensityScore)
-result <- trimByPs(data, 0.05)
+iptw <- ifelse(treatment == 1,
+               mean(treatment == 1) / propensityScore,
+               mean(treatment == 0) / (1 - propensityScore))
+data <- data.frame(rowId = rowId,
+                   treatment = treatment,
+                   propensityScore = propensityScore,
+                   iptw = iptw)
+result1 <- trimByPs(data, createTrimByPsArgs(trimFraction = 0.05))
+result2 <- trimByPs(data, createTrimByPsArgs(equipoiseBounds = c(0.3, 0.7)))
+result3 <- trimByPs(data, createTrimByPsArgs(maxWeight = 10))
 
-}
-\references{
-Crump, Richard K., V. Joseph Hotz, Guido W. Imbens, and Oscar A. Mitnik. 2009. Dealing with limited overlap in estimation of average treatment effects. Biometrika 96(1): 187-199.
-
-Stürmer T, Rothman KJ, Avorn J, Glynn RJ. Treatment effects in the presence of unmeasured confounding: dealing with observations in the tails of the propensity score distribution--a simulation study. Am J Epidemiol. 2010 Oct 1;172(7):843-54.
 }

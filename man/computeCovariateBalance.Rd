@@ -7,11 +7,7 @@
 computeCovariateBalance(
   population,
   cohortMethodData,
-  subgroupCovariateId = NULL,
-  maxCohortSize = 250000,
-  covariateFilter = NULL,
-  threshold = 0.1,
-  alpha = 0.05
+  computeCovariateBalanceArgs = createComputeCovariateBalanceArgs()
 )
 }
 \arguments{
@@ -20,26 +16,7 @@ computeCovariateBalance(
 \item{cohortMethodData}{An object of type \link{CohortMethodData} as generated using
 \code{\link[=getDbCohortMethodData]{getDbCohortMethodData()}}.}
 
-\item{subgroupCovariateId}{Optional: a covariate ID of a binary covariate that indicates a subgroup of
-interest. Both the before and after populations will be restricted to this
-subgroup before computing covariate balance.}
-
-\item{maxCohortSize}{If the target or comparator cohort are larger than this number, they
-will be downsampled before computing covariate balance to save time.
-Setting this number to 0 means no downsampling will be applied.}
-
-\item{covariateFilter}{Determines the covariates for which to compute covariate balance. Either a vector
-of covariate IDs, or a table 1 specifications object as generated for example using
-\code{\link[FeatureExtraction:getDefaultTable1Specifications]{FeatureExtraction::getDefaultTable1Specifications()}}. If \code{covariateFilter = NULL},
-balance will be computed for all variables found in the data.}
-
-\item{threshold}{Threshold value for the absolute value of the standardized difference of means (ASDM).
-If the ASDM exceeds this threshold it will be marked as unbalanced. (Hripcsak et al. 2025)}
-
-\item{alpha}{The family-wise alpha for testing whether the absolute value of the standardized
-difference of means is greater than the threshold. If not provided, any value greater
-than the threshold will be marked as unbalanced.
-highlighted in the plot.}
+\item{computeCovariateBalanceArgs}{Settings object as created by \code{createComputeCovariateBalanceArgs()}.}
 }
 \value{
 Returns a tibble describing the covariate balance before and after PS adjustment,
@@ -112,5 +89,5 @@ Austin, PC (2008) Assessing balance in measured baseline covariates when using m
 matching on the propensity-score. Pharmacoepidemiology and Drug Safety, 17: 1218-1225.
 
 Hripcsak G, Zhang L, Chen Y, Li K, Suchard MA, Ryan PB, Schuemie MJ (2025)
-Assessing Covariate Balance with Small Sample Sizes. medRxiv. Feb 21:2024.04.23.24306230.
+Assessing Covariate Balance with Small Sample Sizes. Stat Med. 2025 Aug;44(18-19):e70212.
 }
