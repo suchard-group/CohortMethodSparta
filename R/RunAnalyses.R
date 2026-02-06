@@ -954,7 +954,21 @@ doFitOutcomeModelPlus <- function(params) {
       ps <- getPs(params$psFile)
     } else {
       ps <- getPs(params$sharedPsFile)
-      #ps <- addPsToStudyPopulation(studyPop, ps) #remove due to v6 issues
+      if(!grepl("l2_", params$sharedPsFile)){
+
+        # v6 issues with studyPop creation.
+        studyPop <- studyPop |> dplyr::arrange(rowId)
+        ps <- ps |> dplyr::arrange(rowId) |>
+          mutate(rowId = studyPop$rowId)
+        if(!all.equal(ps |> select(-personSeqId, -propensityScore, -preferenceScore, -iptw),
+                      studyPop,
+                      check.attributes = FALSE)){
+          stop("Issues with adding PS to study population for non SSPS model.")
+        }
+
+        ps <- addPsToStudyPopulation(studyPop, ps)
+
+      }
     }
   } else {
     ps <- studyPop
