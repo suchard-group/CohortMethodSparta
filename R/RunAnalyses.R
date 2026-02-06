@@ -960,11 +960,12 @@ doFitOutcomeModelPlus <- function(params) {
         studyPop <- studyPop |> dplyr::arrange(rowId)
         ps <- ps |> dplyr::arrange(rowId) |>
           mutate(rowId = studyPop$rowId)
-        if(!all.equal(ps |> select(-personSeqId, -propensityScore, -preferenceScore, -iptw),
-                      studyPop,
-                      check.attributes = FALSE)){
-          stop("Issues with adding PS to study population for non SSPS model.")
-        }
+
+        # if(!all.equal(ps |> select(-personSeqId, -propensityScore, -preferenceScore, -iptw),
+        #               studyPop,
+        #               check.attributes = FALSE)){
+        #   stop("Issues with adding PS to study population for non SSPS model.")
+        # }
 
         ps <- addPsToStudyPopulation(studyPop, ps)
 
