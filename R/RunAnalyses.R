@@ -973,15 +973,17 @@ doFitOutcomeModelPlus <- function(params) {
   if (!is.null(params$args$createPsArgs)) {
     if (params$refitPsForEveryOutcome) {
       ps <- getPs(params$psFile)
+    } else {
+      ps <- getPs(params$sharedPsFile)
       ps <- addPsToStudyPopulation(studyPop, ps)
       if(any(is.na(ps$propensityScore))){
         stop("Issue with PS and Study pop combination for NC models.")
-        }
       }
     }
   } else {
     ps <- studyPop
   }
+
   rm(studyPop)
   ps <- applyTrimMatchStratify(ps, params)
   args <- list(
