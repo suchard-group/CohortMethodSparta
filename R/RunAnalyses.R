@@ -954,7 +954,7 @@ doFitOutcomeModelPlus <- function(params) {
       ps <- getPs(params$psFile)
     } else {
       ps <- getPs(params$sharedPsFile)
-      ps <- addPsToStudyPopulation(studyPop, ps)
+      #ps <- addPsToStudyPopulation(studyPop, ps) #remove due to v6 issues
     }
   } else {
     ps <- studyPop
