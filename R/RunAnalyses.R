@@ -949,26 +949,34 @@ doFitOutcomeModelPlus <- function(params) {
   )
   studyPop <- do.call("createStudyPopulation", args)
 
+  #restrict to common period (manually done to match pre-v6)
+  if (nrow(studyPop) > 0) {
+    studyPop <- studyPop |>
+      group_by(.data$treatment) |>
+      summarise(
+        treatmentStart = min(.data$cohortStartDate),
+        treatmentEnd = max(.data$cohortStartDate)
+      ) |>
+      ungroup() |>
+      summarise(
+        periodStart = max(.data$treatmentStart),
+        periodEnd = min(.data$treatmentEnd)
+      ) |>
+      cross_join(studyPop) |>
+      filter(
+        studyPop$cohortStartDate >= .data$periodStart &
+          studyPop$cohortStartDate <= .data$periodEnd
+      ) |>
+      select(-"periodStart", -"periodEnd")
+  }
+
   if (!is.null(params$args$createPsArgs)) {
     if (params$refitPsForEveryOutcome) {
       ps <- getPs(params$psFile)
-    } else {
-      ps <- getPs(params$sharedPsFile)
-      if(!grepl("l2_", params$sharedPsFile)){
-
-        # v6 issues with studyPop creation.
-        studyPop <- studyPop |> dplyr::arrange(rowId)
-        ps <- ps |> dplyr::arrange(rowId) |>
-          mutate(rowId = studyPop$rowId)
-
-        # if(!all.equal(ps |> select(-personSeqId, -propensityScore, -preferenceScore, -iptw),
-        #               studyPop,
-        #               check.attributes = FALSE)){
-        #   stop("Issues with adding PS to study population for non SSPS model.")
-        # }
-
-        ps <- addPsToStudyPopulation(studyPop, ps)
-
+      ps <- addPsToStudyPopulation(studyPop, ps)
+      if(any(is.na(ps$propensityScore))){
+        stop("Issue with PS and Study pop combination for NC models.")
+        }
       }
     }
   } else {
