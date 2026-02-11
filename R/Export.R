@@ -636,8 +636,7 @@ exportLikelihoodProfiles <- function(outputFolder,
         profile <- profile |>
           transmute(
             logRr = .data$point,
-            logLikelihood = .data$value - max(.data$value),
-            gradient = .data$derivative
+            logLikelihood = .data$value - max(.data$value)
           ) |>
           mutate(
             targetComparatorId = reference$targetComparatorId[i],
@@ -865,6 +864,7 @@ exportPreferenceScoreDistribution <- function(outputFolder,
   message("- preference_score_dist table")
 
   reference <- getFileReference(outputFolder) |>
+    filter(!grepl("l2_", .data$sharedPsFile) | psFile == "") |>
     filter(.data$sharedPsFile != "") |>
     distinct(.data$sharedPsFile, .data$analysisId, .data$targetId, .data$comparatorId, .data$nestingCohortId) |>
     inner_join(targetComparator, by = join_by("targetId", "comparatorId", "nestingCohortId"))
@@ -912,6 +912,7 @@ exportPropensityModel <- function(outputFolder,
                                   targetComparator) {
   message("- propensity_model table")
   reference <- getFileReference(outputFolder) |>
+    filter(!grepl("l2_", .data$sharedPsFile) | psFile == "") |>
     filter(.data$sharedPsFile != "") |>
     distinct(.data$sharedPsFile, .data$analysisId, .data$targetId, .data$comparatorId, .data$nestingCohortId) |>
     inner_join(targetComparator, by = join_by("targetId", "comparatorId", "nestingCohortId"))

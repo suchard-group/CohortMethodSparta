@@ -208,7 +208,7 @@ runCmAnalyses <- function(connectionDetails,
   cmAnalysesSpecificationsFile <- file.path(outputFolder, "cmAnalysesSpecifications.rds")
   if (file.exists(cmAnalysesSpecificationsFile)) {
     oldCmAnalysesSpecifications <- readRDS(cmAnalysesSpecificationsFile)
-    if (!isTRUE(all.equal(oldCmAnalysesSpecifications, cmAnalysesSpecifications))) {
+    if (!isTRUE(all.equal(oldCmAnalysesSpecifications$toList(), cmAnalysesSpecifications$toList()))) {
       rm(list = ls(envir = cache), envir = cache)
       message(sprintf("Output files already exist in '%s', but the analysis settings have changed.", outputFolder))
       response <- utils::askYesNo("Do you want to delete the old files before proceeding?")
@@ -1674,7 +1674,9 @@ summarizeResults <- function(referenceTable,
   subset <- referenceTable |>
     filter(.data$outcomeModelFile != "")
   subset <- addBalance(subset, outputFolder, cmDiagnosticThresholds)
-  subset <- addEquipoise(subset, outputFolder)
+  subsetForEquipoise <- subset |> filter(!grepl("l2_", .data$sharedPsFile) | psFile == "")
+  subsetForEquipoise <- addEquipoise(subsetForEquipoise, outputFolder)
+  subset <- left_join(subset, subsetForEquipoise)
   results <- vector("list", nrow(subset))
   interActionResults <- list()
   pb <- txtProgressBar(style = 3)
@@ -1831,7 +1833,8 @@ summarizeResults <- function(referenceTable,
            "calibratedOneSidedP",
            "calibratedLogRr",
            "calibratedSeLogRr",
-           "targetEstimator")
+           "targetEstimator",
+           "trueEffectSize")
 
 
   diagnosticsSummary <- results |>
